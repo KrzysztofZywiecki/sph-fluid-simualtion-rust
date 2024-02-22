@@ -27,6 +27,8 @@ pub struct FluidSimulationApp {
   cell_manager: CellManager
 }
 
+const CHUNK_SIZE: usize = 512;
+
 impl FluidSimulationApp {
 
   pub fn new(box_dimensions: [i32; 2]) -> Self {
@@ -64,27 +66,36 @@ impl FluidSimulationApp {
   }
 
   pub fn update(&mut self, _args: &UpdateArgs) {
-    self.particles.par_iter_mut().enumerate().for_each(|(index, particle)| {
-      self.dynamics_manager.update_position(particle, &self.accelerations[index]);
-      self.collision_manager.apply_boundary_conditions(particle);
+    self.particles.par_chunks_mut(CHUNK_SIZE).enumerate().for_each(|(index, particles)| {
+      for (i, particle) in particles.iter_mut().enumerate() {
+        let index = index * CHUNK_SIZE + i;
+        self.dynamics_manager.update_position(particle, &self.accelerations[index]);
+        self.collision_manager.apply_boundary_conditions(particle);
+      }
     });
     self.cell_manager.update(&mut self.particles);
 
-    self.local_densities.par_iter_mut().enumerate().for_each(|(index, density)| {
-      let particle = &self.particles[index];
-      let adjacente_particles: Vec<(Particle, usize)> = self.cell_manager.get_adjancet_particles(particle.clone(), &self.particles);
-      let adjecent_particles: Vec<_> = adjacente_particles.iter().map(|(p, _)| p).collect();
-      *density = self.smoothed_interaction.calculate_density(particle, &adjecent_particles);
+    self.local_densities.par_chunks_mut(CHUNK_SIZE).enumerate().for_each(|(index, densities)| {
+      for (i, density) in densities.iter_mut().enumerate() {
+        let index = index * CHUNK_SIZE + i;
+        let particle = &self.particles[index];
+        let adjacente_particles: Vec<(Particle, usize)> = self.cell_manager.get_adjancet_particles(particle.clone(), &self.particles);
+        let adjecent_particles: Vec<_> = adjacente_particles.iter().map(|(p, _)| p).collect();
+        *density = self.smoothed_interaction.calculate_density(particle, &adjecent_particles);
+      }
     });
 
-    self.accelerations.par_iter_mut().enumerate().for_each(|(index, acc)| {
-      let particle = &self.particles[index];
-      let adjacente_particles: Vec<_> = self.cell_manager.get_adjancet_particles(particle.clone(), &self.particles);
-      let adjecent_particles: Vec<_> = adjacente_particles.iter().map(|(p, index)| (p, self.local_densities[*index])).collect();
-      let mut acceleration = self.smoothed_interaction.calculate_acceleration_due_to_pressure(particle, &adjecent_particles, self.local_densities[index]);
-      acceleration += self.smoothed_interaction.calculate_viscosity(particle, &adjecent_particles, self.local_densities[index]);
-      acceleration += self.external_attractor.get_external_attraction_acceleration(particle, self.local_densities[index]);
-      *acc = acceleration;
+    self.accelerations.par_chunks_mut(CHUNK_SIZE).enumerate().for_each(|(index, acc)| {
+      for (i, acc) in acc.iter_mut().enumerate() {
+        let index = index * CHUNK_SIZE + i;
+        let particle = &self.particles[index];
+        let adjacente_particles: Vec<_> = self.cell_manager.get_adjancet_particles(particle.clone(), &self.particles);
+        let adjecent_particles: Vec<_> = adjacente_particles.iter().map(|(p, index)| (p, self.local_densities[*index])).collect();
+        let mut acceleration = self.smoothed_interaction.calculate_acceleration_due_to_pressure(particle, &adjecent_particles, self.local_densities[index]);
+        acceleration += self.smoothed_interaction.calculate_viscosity(particle, &adjecent_particles, self.local_densities[index]);
+        acceleration += self.external_attractor.get_external_attraction_acceleration(particle, self.local_densities[index]);
+        *acc = acceleration;
+      }
     });
 
     for i in 0..self.particles.len() {
