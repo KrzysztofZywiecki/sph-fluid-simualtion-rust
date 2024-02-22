@@ -13,6 +13,7 @@ use piston::Event;
 use crate::piston::PressEvent;
 use vector2d::Vector2D;
 use rand::Rng;
+use rayon::prelude::*;
 
 pub struct FluidSimulationApp {
   pub particles: Vec<Particle>,
@@ -54,27 +55,24 @@ impl FluidSimulationApp {
   }
 
   pub fn update(&mut self, _args: &UpdateArgs) {
-    for index in 0..self.particles.len() {
-      let particle = &mut self.particles[index];
+    self.particles.par_iter_mut().for_each(|particle| {
       self.dynamics_manager.update_position(particle);
       self.collision_manager.apply_boundary_conditions(particle);
-    }
+    });
     self.cell_manager.update(&mut self.particles);
     let mut particles = self.particles.clone();
-    for index in 0..self.particles.len() {
-      let particle = &mut self.particles[index];
+    self.particles.par_iter_mut().for_each(|particle| {
       let adjacente_particles: Vec<Particle> = self.cell_manager.get_adjancet_particles(particle.clone(), &particles);
       particle.local_density = self.smoothed_interaction.calculate_density(particle, &adjacente_particles);
-    }
+    });
     particles = self.particles.clone();
-    for index in 0..self.particles.len() {
-      let particle = &mut self.particles[index];
+    self.particles.par_iter_mut().for_each(|particle| {
       let adjacente_particles: Vec<Particle> = self.cell_manager.get_adjancet_particles(particle.clone(), &particles);
       particle.acceleration = self.smoothed_interaction.calculate_acceleration_due_to_pressure(particle, &adjacente_particles);
       particle.acceleration += self.smoothed_interaction.calculate_viscosity(particle, &adjacente_particles);
       particle.acceleration += self.external_attractor.get_external_attraction_acceleration(particle);
       self.dynamics_manager.update_velocity(particle);
-    }
+    });
   }
 
   pub fn handle_event(&mut self, event: Event) {
