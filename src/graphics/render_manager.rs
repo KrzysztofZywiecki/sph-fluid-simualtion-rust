@@ -2,37 +2,76 @@ use crate::fluid_simulation::particle::Particle;
 use opengl_graphics::GlGraphics;
 use piston::RenderArgs;
 use std::cmp::max;
-use graphics::*;
+use graphics::{math::{Matrix2d, Vec2d}, triangulation::{tx, ty}, *};
 
 
 pub struct RenderManager {
   gl: GlGraphics
 }
 
+fn stream_polygon_tri_list<E, F>(m: Matrix2d, mut polygon: E, mut f: F)
+where
+    E: Iterator<Item = Vec2d>,
+    F: FnMut(&[[f32; 2]]),
+{
+    let mut vertices: [[f32; 2]; 20000] = [[0.0; 2]; 20000];
+    let mut i = 0;
+    'read_vertices: loop {
+      let p = match polygon.next() {
+        None => break 'read_vertices,
+        Some(val) => val,
+    };
+        let ind_out = i;
+        vertices[ind_out] = [tx(m, p[0], p[1]), ty(m, p[0], p[1])];
+        i += 1;
+        // Buffer is full.
+        if (i + 1) > 20000 {
+            // Send chunk and start over.
+            f(&vertices[0..i]);
+            i = 0;
+        }
+    }
+
+    if i > 0 {
+        f(&vertices[0..i]);
+    }
+}
+
+fn with_polygon_tri_list<F>(m: Matrix2d, polygon: &[[f64; 2]], f: F)
+where
+    F: FnMut(&[[f32; 2]]),
+{
+    stream_polygon_tri_list(m, (0..polygon.len()).map(|i| polygon[i]), f);
+}
+
 
 impl RenderManager {
 
-  pub fn new(gl: GlGraphics) -> Self {
+  pub fn new(g: GlGraphics) -> Self {
     RenderManager {
-        gl
+      gl: g
     }
   }
 
 
   pub fn render(&mut self, args: &RenderArgs, particles: &Vec<Particle>) {
     const BLACK_COLOR: [f32; 4] = [0.0, 0.0, 0.0, 1.0];
-    self.gl.draw(args.viewport(), |c, gl| {
-        clear(BLACK_COLOR, gl);
-        for particle in particles {
-            let color = Self::speed_to_color_gradient(particle.speed());
-            ellipse(
-                color,
-                //[0.0, 0.0, 1.0, 1.0],
-                [particle.position.x as f64, particle.position.y as f64, 5.0, 5.0],
-                c.transform,
-                gl,
-            );
-        }
+    self.gl.draw(args.viewport(), |c, g| {
+        clear(BLACK_COLOR, g);
+        let verts = particles.iter().map(|particle| {
+          [[particle.position.x as f64, particle.position.y as f64 + 3.0],
+          [particle.position.x as f64 + 3.0, particle.position.y as f64 - 3.0],
+          [particle.position.x as f64 - 3.0, particle.position.y as f64 - 3.0]]
+        }).flatten().collect::<Vec<_>>();
+
+        let colors = particles.iter().map(|particle| {
+          let speed = Self::speed_to_color_gradient(particle.speed());
+          [speed, speed, speed]
+        }).flatten().collect::<Vec<_>>();
+
+        g.tri_list_c(&DrawState::default(), |f| {
+  with_polygon_tri_list(c.transform, verts.as_slice(), |vertices| f(vertices, colors.as_slice()))
+});
     });
   }
 
