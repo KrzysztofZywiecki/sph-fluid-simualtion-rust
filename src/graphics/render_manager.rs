@@ -56,8 +56,8 @@ impl RenderManager {
 
   pub fn render(&mut self, args: &RenderArgs, particles: &Vec<Particle>) {
     const BLACK_COLOR: [f32; 4] = [0.0, 0.0, 0.0, 1.0];
-    self.gl.draw(args.viewport(), |c, g| {
-        clear(BLACK_COLOR, g);
+    self.gl.draw(args.viewport(), |c, gl| {
+        clear(BLACK_COLOR, gl);
         let verts = particles.iter().map(|particle| {
           [[particle.position.x as f64, particle.position.y as f64 + 3.0],
           [particle.position.x as f64 + 3.0, particle.position.y as f64 - 3.0],
@@ -69,9 +69,9 @@ impl RenderManager {
           [speed, speed, speed]
         }).flatten().collect::<Vec<_>>();
 
-        g.tri_list_c(&DrawState::default(), |f| {
-  with_polygon_tri_list(c.transform, verts.as_slice(), |vertices| f(vertices, colors.as_slice()))
-});
+        gl.tri_list_c(&DrawState::default(), |f| {
+            with_polygon_tri_list(c.transform, verts.as_slice(), |vertices| f(vertices, colors.as_slice()))
+        });
     });
   }
 
