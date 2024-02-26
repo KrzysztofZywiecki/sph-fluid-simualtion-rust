@@ -47,9 +47,9 @@ where
 
 impl RenderManager {
 
-  pub fn new(g: GlGraphics) -> Self {
+  pub fn new(gl: GlGraphics) -> Self {
     RenderManager {
-      gl: g
+      gl
     }
   }
 
